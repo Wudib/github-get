@@ -1,0 +1,48 @@
+# 临时构建文件：为 x86_64 服务器产出可离线分发的镜像
+#
+# 与 backend/Dockerfile 的唯一区别：
+#   1. FROM 指向本地已备好的 amd64 基础镜像（Docker Hub 在国内不可达）
+#   2. pip 走清华镜像源（PyPI 直连在 15s 内只下完 46MB 索引中的 1.2MB）
+# 其余指令与原文件逐字一致，确保产物行为不变。
+FROM python:3.12-slim-amd64
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    TZ=Asia/Shanghai
+
+WORKDIR /app
+
+# 依赖单独一层，便于缓存
+COPY backend/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+COPY backend/app /app/app
+COPY frontend /app/static
+
+ENV DATA_DIR=/data \
+    STATIC_DIR=/app/static \
+    PORT=8000 \
+    COLLECT_INTERVAL_MINUTES=60 \
+    RETENTION_DAYS=90 \
+    HOURLY_KEEP_DAYS=14 \
+    TRENDING_PERIODS=weekly \
+    DISCOVERY_WINDOWS=7,30,90 \
+    DISCOVERY_MIN_STARS=100 \
+    DISCOVERY_PAGES=2 \
+    ENRICH_LIMIT=25 \
+    MAX_TRACKED_REPOS=3000 \
+    RUN_ON_STARTUP=true
+
+RUN mkdir -p /data
+VOLUME ["/data"]
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=25s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status==200 else 1)"
+
+# 单 worker：内置调度器只能在一个进程里运行
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]
