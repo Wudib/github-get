@@ -1,0 +1,36 @@
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+  const list=await (await fetch('http://127.0.0.1:9222/json/list')).json();
+  const ws=new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl);
+  let seq=0;const pending=new Map();const errs=[];
+  ws.addEventListener('message',e=>{const m=JSON.parse(e.data);
+    if(m.id&&pending.has(m.id)){pending.get(m.id)(m);pending.delete(m.id);}
+    else if(m.method==='Log.entryAdded'&&m.params.entry.level==='error')errs.push(m.params.entry.text);});
+  await new Promise(r=>ws.addEventListener('open',r));
+  const send=(method,params)=>new Promise(res=>{const id=++seq;pending.set(id,res);ws.send(JSON.stringify({id,method,params}));});
+  const ev=async(x)=>{const r=await send('Runtime.evaluate',{expression:x,returnByValue:true});
+    const p=r.result||{}; if(p.exceptionDetails) return '<<异常:'+p.exceptionDetails.exception.description.split('\n')[0]+'>>';
+    return p.result?p.result.result?p.result.result.value:p.result.value:null;};
+  await send('Page.enable');await send('Runtime.enable');await send('Log.enable');
+  await send('Emulation.setDeviceMetricsOverride',{width:1560,height:1008,deviceScaleFactor:1,mobile:false});
+  await send('Page.navigate',{url:'http://127.0.0.1:8080/'});
+  await sleep(5500);
+  console.log('=== 卡片标签中文化 ===');
+  console.log('  术语表已加载 :', await ev("!!window.GHTerms"));
+  console.log('  样例对照     :', await ev("['machine-learning','llm','cli','awesome','self-hosted','vector-database'].map(t=>t+'→'+GHTerms.topic(t)).join('  ')"));
+  console.log('  卡片上的标签 :', await ev("[...document.querySelectorAll('.card-item')].map(c=>[...c.querySelectorAll('.topic')].map(e=>e.textContent).join('/')).filter(Boolean).slice(0,6).join(' | ')"));
+  console.log('  标签悬停原文 :', await ev("(document.querySelector('.card-item .topic')||{title:''}).title"));
+  console.log('  筛选提示     :', await ev("[...document.querySelectorAll('.chip,.model')].map(e=>(e.getAttribute('title')||'').slice(0,18)).join(' | ')"));
+  console.log('  页脚数据来源 :', await ev("[...document.querySelectorAll('.proof .by, .proof .logos span')].map(e=>e.textContent).join(' / ')"));
+  console.log('  描述（无译文时显示英文原文）:', (await ev("(document.querySelector('.card-item .ci-desc')||{textContent:''}).textContent")).slice(0,60));
+  await ev("document.querySelector('.card-item').click(); 'ok'");
+  await sleep(2500);
+  console.log('\n=== 详情抽屉中文化 ===');
+  console.log('  统计字段 :', await ev("[...document.querySelectorAll('.drawer-stats span')].map(e=>e.textContent).join(' | ')"));
+  console.log('  许可证   :', await ev("[...document.querySelectorAll('.kv dd')].map(e=>e.textContent.replace(/\\s+/g,' ').trim()).find(t=>/许可证|Apache|MIT|BSD|GPL/.test(t)) || '(该仓库无许可证)'"));
+  console.log('  字段名   :', await ev("[...document.querySelectorAll('.kv dt')].map(e=>e.textContent).join(' / ')"));
+  console.log('  标签标题 :', await ev("([...document.querySelectorAll('.drawer-h3')].map(e=>e.textContent.trim()).find(t=>t.indexOf('标签')===0)) || '(无标签)'"));
+  console.log('  抽屉标签 :', await ev("[...document.querySelectorAll('.drawer .topic')].map(e=>e.textContent).join(' / ') || '(无)'"));
+  console.log('\n  控制台错误:', errs.length?JSON.stringify(errs.slice(0,3)):'(无)');
+  process.exit(0);
+})().catch(e=>{console.error('FAILED',e.message);process.exit(1);});

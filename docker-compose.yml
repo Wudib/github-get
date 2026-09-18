@@ -1,0 +1,67 @@
+# GitHub 热门项目雷达 —— 一条命令启动：docker compose up -d
+#
+# name: 固定 Compose 项目名。不写的话项目名 = 当前目录名，
+# 一旦重命名项目文件夹，docker compose down/up 就认不出旧容器了
+# （down 会静默什么都不做，up 会撞 container_name 报冲突）。
+name: github-radar
+
+services:
+  github-radar:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: ${IMAGE_NAME:-github-radar:1.0.0}
+    container_name: github-radar
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8000"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # ---- GitHub 连接（内网如需代理，在 .env 里填 HTTP_PROXY / HTTPS_PROXY）----
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_API_BASE: ${GITHUB_API_BASE:-https://api.github.com}
+      GITHUB_GRAPHQL_URL: ${GITHUB_GRAPHQL_URL:-https://api.github.com/graphql}
+      GITHUB_TRENDING_BASE: ${GITHUB_TRENDING_BASE:-https://github.com/trending}
+      GITHUB_TIMEOUT_SECONDS: ${GITHUB_TIMEOUT_SECONDS:-30}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+      # ---- 采集策略 ----
+      COLLECT_INTERVAL_MINUTES: ${COLLECT_INTERVAL_MINUTES:-60}
+      TRENDING_PERIODS: ${TRENDING_PERIODS:-weekly}
+      TRENDING_LANGUAGES: ${TRENDING_LANGUAGES:-}
+      DISCOVERY_WINDOWS: ${DISCOVERY_WINDOWS:-7,30,90}
+      DISCOVERY_MIN_STARS: ${DISCOVERY_MIN_STARS:-100}
+      DISCOVERY_PAGES: ${DISCOVERY_PAGES:-2}
+      ENRICH_LIMIT: ${ENRICH_LIMIT:-25}
+      MAX_TRACKED_REPOS: ${MAX_TRACKED_REPOS:-3000}
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      HOURLY_KEEP_DAYS: ${HOURLY_KEEP_DAYS:-14}
+      STALE_REPO_DAYS: ${STALE_REPO_DAYS:-180}
+      RUN_ON_STARTUP: ${RUN_ON_STARTUP:-true}
+      COLLECT_ON_EMPTY_DB: ${COLLECT_ON_EMPTY_DB:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # ---- 中文翻译（可选，留空即关闭，页面显示英文原文）----
+      TRANSLATE_PROVIDER: ${TRANSLATE_PROVIDER:-off}
+      TRANSLATE_BASE_URL: ${TRANSLATE_BASE_URL:-}
+      TRANSLATE_API_KEY: ${TRANSLATE_API_KEY:-}
+      TRANSLATE_MODEL: ${TRANSLATE_MODEL:-}
+      TRANSLATE_BATCH: ${TRANSLATE_BATCH:-20}
+      TRANSLATE_PER_RUN: ${TRANSLATE_PER_RUN:-200}
+      TRANSLATE_TOPICS_PER_RUN: ${TRANSLATE_TOPICS_PER_RUN:-200}
+      TRANSLATE_MAX_CHARS: ${TRANSLATE_MAX_CHARS:-300}
+      TRANSLATE_TIMEOUT: ${TRANSLATE_TIMEOUT:-90}
+      TRANSLATE_MAX_SECONDS: ${TRANSLATE_MAX_SECONDS:-300}
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status==200 else 1)"]
+      interval: 60s
+      timeout: 10s
+      start_period: 25s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

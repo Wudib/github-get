@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>GitHub Radar — 洞察热门趋势，抢先发现星标暴涨</title>
+  <meta name="description" content="追踪 GitHub 每周热门项目与短时间内星标暴增的项目，内网自托管看板。" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%239C86CE'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23fff'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23151519'/%3E%3C/svg%3E" />
+  <link rel="preload" href="./assets/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div id="app" v-cloak>
+  <!-- ===================== 背景视频 ===================== -->
+  <div class="stage" aria-hidden="true">
+    <video class="stage-video" autoplay muted loop playsinline preload="auto">
+      <source src="./assets/bg.mp4" type="video/mp4" />
+    </video>
+    <div class="stage-scrim"></div>
+  </div>
+
+  <div class="page">
+    <!-- ===================== HERO ===================== -->
+    <section class="hero-wrap">
+      <input type="checkbox" id="menu" class="menu-toggle" />
+      <header class="nav">
+        <a class="brand" href="#dashboard" aria-label="GitHub Radar 首页" @click.prevent="go('trending')">
+          <svg class="mark" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+            <circle cx="17" cy="17" r="17" fill="#9C86CE" />
+            <circle cx="17" cy="17" r="8.6" fill="#FFFFFF" />
+            <circle cx="17" cy="17" r="3.7" fill="#151519" />
+          </svg>
+          <span class="brand-name">GitHub Radar</span>
+        </a>
+
+        <nav class="links" aria-label="主导航">
+          <a v-for="(t, i) in tabs" :key="t.id" :href="'#/' + t.id"
+             :style="{ '--i': i }" @click.prevent="go(t.id)">{{ t.label }}</a>
+        </nav>
+
+        <button class="cta" :disabled="collecting" @click="triggerCollect">
+          <span>{{ collecting ? '采集中…' : '立即采集' }}</span>
+        </button>
+
+        <label class="burger" for="menu" aria-label="打开菜单">
+          <span></span><span></span>
+        </label>
+      </header>
+
+      <!-- 移动端菜单（纯 CSS checkbox 驱动） -->
+      <div class="sheet">
+        <nav class="sheet-panel">
+          <a v-for="t in tabs" :key="t.id" :href="'#/' + t.id" @click="go(t.id)">{{ t.label }}</a>
+          <button class="sheet-cta" :disabled="collecting" @click="triggerCollect">
+            {{ collecting ? '采集中…' : '立即采集' }}
+          </button>
+        </nav>
+      </div>
+
+      <main class="hero">
+        <h1 class="h1">洞察 GitHub 趋势。抢先发现热门项目。</h1>
+
+        <div class="card">
+          <div class="tools">
+            <div class="chips">
+              <!-- Chip 1：语言 -->
+              <label class="chip" style="--cw:107;--pl:12;--ig:3.7;--ic:15.06" :title="hint('lang')">
+                <svg class="chip-ic" width="15.06" height="15.06" viewBox="0 0 16 16" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1.4c1.3 0 2.4.9 3.1 2.4H4.9C5.6 3.3 6.7 2.4 8 2.4zM4.2 6.3h7.6c.1.5.2 1.1.2 1.7s-.1 1.2-.2 1.7H4.2A8.6 8.6 0 014 8c0-.6.1-1.2.2-1.7zm1 5.9h5.6c-.7 1.5-1.8 2.4-2.8 2.4s-2.1-.9-2.8-2.4z"/>
+                </svg>
+                <span class="chip-label">{{ chipLangLabel }}</span>
+                <select v-model="filters.language" aria-label="按语言筛选">
+                  <option value="">全部语言</option>
+                  <option v-for="l in languages" :key="l.language" :value="l.language">{{ l.language }}</option>
+                </select>
+              </label>
+
+              <!-- Chip 2：最低 Star -->
+              <label class="chip" style="--cw:108;--pl:16;--ig:3.9;--ic:11.8" :title="hint('stars')">
+                <svg class="chip-ic" width="11.8" height="11.8" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M8 1.4l2 4.1 4.5.6-3.3 3.2.8 4.5L8 11.7l-4 2.1.8-4.5L1.5 6.1 6 5.5z"/>
+                </svg>
+                <span class="chip-label">{{ chipStarLabel }}</span>
+                <select v-model.number="filters.min_stars" aria-label="按最低 Star 筛选">
+                  <option :value="0">不限 Star</option>
+                  <option :value="100">100+ Star</option>
+                  <option :value="500">500+ Star</option>
+                  <option :value="1000">1k+ Star</option>
+                  <option :value="5000">5k+ Star</option>
+                  <option :value="20000">20k+ Star</option>
+                </select>
+              </label>
+
+              <!-- Chip 3：随视图变化 -->
+              <label class="chip" style="--cw:107;--pl:15.8;--ig:2.9;--ic:12.13" :title="thirdHint">
+                <svg class="chip-ic" width="12.13" height="12.13" viewBox="0 0 16 16" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M8 1.2a6.8 6.8 0 100 13.6A6.8 6.8 0 008 1.2zm-.9 2.9v4.6l3.7 2.2.8-1.3-3-1.8V4.1z"/>
+                </svg>
+                <span class="chip-label">{{ chipThirdLabel }}</span>
+                <select v-model="thirdValue" :aria-label="chipThirdAria">
+                  <option v-for="o in thirdOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="right">
+              <!-- 模型位：当前视图的时间口径 / 排序 -->
+              <label class="model" :title="modelHint">
+                <span class="model-text">{{ modelLabel }}</span>
+                <svg class="chev" width="6.8" height="6.8" viewBox="0 0 8 8" aria-hidden="true">
+                  <path d="M.9 2.3h6.2L4 6.1z"/>
+                </svg>
+                <select v-model="modelValue" :aria-label="modelAria">
+                  <option v-for="o in modelOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+                </select>
+              </label>
+
+              <button type="button" class="attach" @click="exportCsv" title="导出当前列表为 CSV" aria-label="导出当前列表为 CSV">
+                <svg width="19.79" height="19.79" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M16.9 3.4a4.6 4.6 0 00-6.5 0l-6.6 6.6a1.3 1.3 0 001.8 1.9l6.4-6.4a2 2 0 012.9 0 2 2 0 010 2.9l-6.4 6.4a3.4 3.4 0 01-4.8 0 3.4 3.4 0 010-4.8l5.5-5.4a1.3 1.3 0 00-1.8-1.9L2 8.1a6 6 0 000 8.5 6 6 0 008.5 0l6.4-6.4a4.6 4.6 0 000-6.5z"/>
+                </svg>
+              </button>
+
+              <button type="button" class="send" :class="{ spinning: loading }"
+                      @click="applyFilters" aria-label="刷新列表" title="刷新列表（重新拉取当前条件的数据）">
+                <svg width="11.66" height="11.66" viewBox="0 0 16 16" aria-hidden="true" fill="none"
+                     stroke="#fff" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15.33 2.67 15.33 6.67 11.33 6.67"/>
+                  <polyline points="0.67 13.33 0.67 9.33 4.67 9.33"/>
+                  <path d="M2.34 6a6 6 0 0 1 9.9-2.24L15.33 6.67M0.67 9.33l3.09 2.91A6 6 0 0 0 13.66 10"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- ===================== 看板 ===================== -->
+    <section class="dash" id="dashboard">
+      <div class="dash-inner">
+        <div class="dash-head">
+          <div class="segmented" role="tablist">
+            <button v-for="t in tabs" :key="t.id" role="tab" :aria-selected="view === t.id"
+                    :class="{ active: view === t.id }" @click="go(t.id)">{{ t.label }}</button>
+          </div>
+
+          <div class="stats" v-if="overview">
+            <span class="pill"><b>{{ num(overview.repo_count) }}</b> 收录仓库</span>
+            <span class="pill" :title="descLangHint">描述 <b>{{ descLang }}</b></span>
+            <span class="pill"><b>{{ num(overview.tracked_count) }}</b> 增速跟踪</span>
+            <span class="pill"><b>{{ num(overview.snapshot_count) }}</b> 快照点</span>
+            <span class="pill sync">
+              <i class="dot" :class="overview.collecting ? 'live' : (overview.last_run ? overview.last_run.status : '')"></i>
+              <template v-if="overview.collecting">正在采集…</template>
+              <template v-else-if="overview.last_run" :title="runTitle(overview.last_run)">
+                上次采集 {{ relTime(overview.last_run.finished_at || overview.last_run.started_at) }}{{ runSuffix(overview.last_run) }}
+              </template>
+              <template v-else>尚未采集</template>
+            </span>
+          </div>
+
+          <button class="ghost-btn" :disabled="collecting" @click="triggerCollect">
+            {{ collecting ? '采集中…' : '立即采集' }}
+          </button>
+        </div>
+
+        <div class="notice" v-if="overview && !overview.config.token_configured">
+          未配置 <code>GITHUB_TOKEN</code>：API 限流为 60 次/小时，星标快照能力受限。在 <code>.env</code> 中配置后重新 <code>docker compose up -d</code> 即可解锁完整体验。
+        </div>
+        <div class="notice info" v-if="fallbackNotice">{{ fallbackNotice }}</div>
+        <p class="meta-line" v-if="listMeta">{{ listMeta }}</p>
+
+        <div v-if="loading && !items.length" class="placeholder">正在加载数据…</div>
+        <div v-else-if="error" class="placeholder error">{{ error }}</div>
+        <div v-else-if="!items.length" class="placeholder">
+          <p>暂无数据。</p>
+          <p class="hint" v-if="view === 'surging'">
+            星标暴涨榜依赖历史快照：采集满 1 小时后才有 1 小时增速，满 24 小时后才有 24 小时增速。
+            也可以把「时间口径」切到 7 天 / 30 天，先看 GitHub 官方的周期增量。
+          </p>
+          <p class="hint" v-else-if="view === 'trending'">还没有榜单数据，点右上角「立即采集」拉取一次。</p>
+          <p class="hint" v-else>换个关键词或放宽筛选条件试试。</p>
+        </div>
+
+        <div v-else class="grid">
+          <article class="card-item" v-for="(r, i) in items" :key="r.full_name" @click="openDetail(r)">
+            <header class="ci-head">
+              <span class="rank" v-if="r.rank">{{ ((page - 1) * pageSize) + i + 1 }}</span>
+              <a class="repo-name" :href="r.html_url" target="_blank" rel="noopener" @click.stop>
+                <span class="owner">{{ r.owner }}/</span>{{ r.name }}
+              </a>
+              <span class="badge lang" v-if="r.language"><i :style="{ background: langColor(r.language) }"></i>{{ r.language }}</span>
+              <span class="badge new" v-if="r.age_days !== null && r.age_days !== undefined && r.age_days <= 90">NEW</span>
+            </header>
+            <p class="ci-desc" :title="descTitle(r)">{{ descOf(r) }}</p>
+            <footer class="ci-foot">
+              <span class="m">★ {{ num(r.stars) }}</span>
+              <span class="m">⑂ {{ num(r.forks) }}</span>
+              <span class="m gain" v-if="gainOf(r) !== null">+{{ num(gainOf(r)) }} / {{ windowLabel }}</span>
+              <span class="m gain" v-else-if="r.stars_gained !== null && r.stars_gained !== undefined">本周期 +{{ num(r.stars_gained) }}</span>
+              <span class="m" v-if="r.per_day_24h">≈ {{ num(r.per_day_24h) }}/天</span>
+              <span class="m muted" v-if="r.age_days !== null && r.age_days !== undefined">创建 {{ r.age_days }} 天</span>
+            </footer>
+            <div class="topics" v-if="r.topics && r.topics.length">
+              <span class="topic" v-for="t in r.topics.slice(0, 4)" :key="t" :title="topicTitle(t)">{{ topicZh(t) }}</span>
+            </div>
+          </article>
+        </div>
+
+        <div class="loadmore" v-if="hasMore">
+          <button class="ghost-btn" :disabled="loading" @click="loadMore">{{ loading ? '加载中…' : '加载更多' }}</button>
+        </div>
+      </div>
+
+      <!-- 页脚：数据来源（页面的最后一块内容） -->
+      <footer class="proof">
+        <p class="by">数据来源</p>
+        <div class="logos">
+          <span>GitHub Trending</span><span>Search API</span><span>GraphQL</span>
+        </div>
+      </footer>
+    </section>
+  </div>
+
+  <!-- ===================== 详情抽屉 ===================== -->
+  <div class="overlay" v-if="detail" @click.self="closeDetail">
+    <aside class="drawer">
+      <header class="drawer-head">
+        <div>
+          <a class="drawer-title" :href="detail.html_url" target="_blank" rel="noopener">{{ detail.full_name }} ↗</a>
+          <p class="drawer-sub" :title="descTitle(detail)">{{ descOf(detail) }}</p>
+        </div>
+        <button class="ghost-btn icon" @click="closeDetail" aria-label="关闭">✕</button>
+      </header>
+
+      <div class="drawer-stats">
+        <div><b>{{ num(detail.stars) }}</b><span>Star 数</span></div>
+        <div><b>{{ num(detail.forks) }}</b><span>Fork 数</span></div>
+        <div v-if="detail.gain_24h !== null && detail.gain_24h !== undefined"><b>+{{ num(detail.gain_24h) }}</b><span>24 小时</span></div>
+        <div v-if="detail.gain_7d !== null && detail.gain_7d !== undefined"><b>+{{ num(detail.gain_7d) }}</b><span>7 天</span></div>
+        <div v-if="detail.per_day_24h"><b>{{ num(detail.per_day_24h) }}</b><span>星/天</span></div>
+        <div v-if="detail.age_days !== null && detail.age_days !== undefined"><b>{{ detail.age_days }}</b><span>天龄</span></div>
+      </div>
+
+      <h3 class="drawer-h3">Star 增长趋势 <small>{{ detail.point_count }} 个快照点</small></h3>
+      <div v-if="chart" class="chart">
+        <svg :viewBox="'0 0 ' + chart.w + ' ' + chart.h" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#F8B285" stop-opacity="0.40" />
+              <stop offset="100%" stop-color="#F8B285" stop-opacity="0.02" />
+            </linearGradient>
+          </defs>
+          <line v-for="t in chart.ticks" :key="'g' + t.y" :x1="chart.pad" :x2="chart.w - chart.pad" :y1="t.y" :y2="t.y" class="grid-line" />
+          <text v-for="t in chart.ticks" :key="'l' + t.y" :x="4" :y="t.y + 4" class="axis-text">{{ t.label }}</text>
+          <path :d="chart.area" fill="url(#grad)" />
+          <path :d="chart.line" fill="none" stroke="#F8B285" stroke-width="2" />
+          <circle :cx="chart.lastX" :cy="chart.lastY" r="4" fill="#FBBC94" />
+        </svg>
+        <div class="chart-foot">
+          <span>{{ fmtTime(chart.firstTs) }}</span>
+          <span class="muted">{{ num(chart.minY) }} → {{ num(chart.maxY) }} 星</span>
+          <span>{{ fmtTime(chart.lastTs) }}</span>
+        </div>
+      </div>
+      <div v-else class="placeholder small">暂无足够快照绘制趋势（至少需要 2 个采集点）</div>
+
+      <h3 class="drawer-h3">详细信息</h3>
+      <dl class="kv">
+        <dt>仓库地址</dt><dd><a :href="detail.html_url" target="_blank" rel="noopener">{{ detail.html_url }}</a></dd>
+        <dt v-if="detail.homepage">主页</dt><dd v-if="detail.homepage"><a :href="detail.homepage" target="_blank" rel="noopener">{{ detail.homepage }}</a></dd>
+        <dt>语言</dt><dd>{{ detail.language || '未知' }}</dd>
+        <dt v-if="detail.license">许可证</dt>
+        <dd v-if="detail.license">
+          <span :title="detail.license">{{ licenseZh(detail.license) }}</span>
+          <span class="muted" v-if="licenseNote(detail.license)"> · {{ licenseNote(detail.license) }}</span>
+        </dd>
+        <dt>创建时间</dt><dd>{{ fmtTime(detail.created_at) }}</dd>
+        <dt>最近推送</dt><dd>{{ fmtTime(detail.pushed_at) }}</dd>
+        <dt>未解决 Issue</dt><dd>{{ num(detail.open_issues) }}</dd>
+        <dt>首次收录</dt><dd>{{ fmtTime(detail.first_seen) }}</dd>
+      </dl>
+
+      <template v-if="detail.topics && detail.topics.length">
+        <h3 class="drawer-h3">标签</h3>
+        <div class="topics">
+          <span class="topic" v-for="t in detail.topics" :key="t" :title="topicTitle(t)">{{ topicZh(t) }}</span>
+        </div>
+      </template>
+
+      <template v-if="detail.trend_history && detail.trend_history.length">
+        <h3 class="drawer-h3">上榜记录</h3>
+        <ul class="history">
+          <li v-for="(h, i) in detail.trend_history" :key="i">
+            <b>{{ h.period }}</b><span v-if="h.language"> · {{ h.language }}</span>
+            · 第 {{ h.rank }} 名<span v-if="h.stars_gained"> · 周期内 +{{ num(h.stars_gained) }}</span>
+            <span class="muted"> · {{ fmtTime(h.collected_at) }}</span>
+          </li>
+        </ul>
+      </template>
+    </aside>
+  </div>
+</div>
+
+<script src="./vendor/vue.global.prod.js"></script>
+<script src="./terms.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
